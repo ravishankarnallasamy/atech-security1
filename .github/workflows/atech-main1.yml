@@ -13,25 +13,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install Microsoft Security DevOps
-        run: |
-          curl -L https://aka.ms/msdo-linux -o msdo
-          chmod +x msdo
-          sudo mv msdo /usr/local/bin/msdo
+      - name: Run Microsoft Security DevOps Scan
+        uses: microsoft/security-devops-action@preview
+        with:
+          run: msdo run --output-format sarif --output sarif-results.sarif
 
-      - name: Run Security DevOps Scan
-        run: |
-          msdo run --output-format sarif --output sarif-results.sarif
-
-      - name: Send SARIF to Azure Monitor
-        env:
-          WORKSPACE_ID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}
-          WORKSPACE_KEY: ${{ secrets.LOG_ANALYTICS_PRIMARY_KEY }}
-        run: |
-          echo "Sending SARIF to Azure Monitor..."
-          curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com/api/logs?api-version=2016-04-01" \
-            -H "Content-Type: application/json" \
-            -H "Log-Type: SecurityScan" \
-            -H "x-ms-date: $(date -u)" \
-            -H "Authorization: SharedKey $WORKSPACE_ID:$WORKSPACE_KEY" \
-            --data-binary @sarif-results.sarif
+      - name: Upload SARIF results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: sarif-results.sarif
