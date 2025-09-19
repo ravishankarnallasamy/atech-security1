@@ -1,93 +1,24 @@
-name: Security Scan with MSDO and Azure Monitor Integration
+name: MSDO Security Scan
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  msdo-scan:
+  security-scan:
+    name: Microsoft Security DevOps
     runs-on: windows-latest
 
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+      security-events: write
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Run Microsoft Security DevOps
-      uses: microsoft/security-devops-action@v1.12.0
-      with:
-        categories: 'code'
-
-    - name: Upload SARIF to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v2
-      with:
-        sarif_file: msdo.sarif
-
-    - name: Parse SARIF and send to Azure Monitor
-      shell: pwsh
-      run: |
-        $workspaceId = "${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}"
-        $sharedKey = "${{ secrets.LOG_ANALYTICS_SHARED_KEY }}"
-        $logType = "SecurityScan"
-        $sarifFilePath = "msdo.sarif"
-
-        $sarifContent = Get-Content $sarifFilePath -Raw | ConvertFrom-Json
-        $records = @()
-
-        foreach ($run in $sarifContent.runs) {
-            foreach ($result in $run.results) {
-                $record = @{
-                    RuleId = $result.ruleId
-                    Message = $result.message.text
-                    Level = $result.level
-                    FilePath = $result.locations[0].physicalLocation.artifactLocation.uri
-                }
-                $records += $record
-            }
-        }
-
-        $jsonBody = $records | ConvertTo-Json -Depth 5
-
-        function Build-Signature {
-            param (
-                [string]$WorkspaceId,
-                [string]$SharedKey,
-                [string]$Date,
-                [int]$ContentLength,
-                [string]$Method,
-                [string]$ContentType,
-                [string]$Resource
-            )
-
-            $stringToHash = "$Method`n$ContentLength`n$ContentType`n$Date`n$Resource"
-            $bytesToHash = [Text.Encoding]::UTF8.GetBytes($stringToHash)
-            $keyBytes = [Convert]::FromBase64String($SharedKey)
-            $sha256 = New-Object System.Security.Cryptography.HMACSHA256
-            $sha256.Key = $keyBytes
-            $hashedBytes = $sha256.ComputeHash($bytesToHash)
-            $encodedHash = [Convert]::ToBase64String($hashedBytes)
-            return "SharedKey $WorkspaceId:$encodedHash"
-        }
-
-        function Send-DataToLogAnalytics {
-            param (
-                [string]$WorkspaceId,
-                [string]$SharedKey,
-                [string]$LogType,
-                [string]$JsonBody
-            )
-
-            $TimeStamp = Get-Date -Format "r"
-            $Signature = Build-Signature -WorkspaceId $WorkspaceId -SharedKey $SharedKey -Date $TimeStamp -ContentLength $JsonBody.Length -Method "POST" -ContentType "application/json" -Resource "/api/logs"
-            $Uri = "https://$WorkspaceId.ods.opinsights.azure.com/api/logs?api-version=2016-04-01"
-
-            Invoke-RestMethod -Method Post -Uri $Uri -Headers @{
-                "Authorization" = $Signature
-                "Log-Type" = $LogType
-                "x-ms-date" = $TimeStamp
-                "Content-Type" = "application/json"
-            } -Body $JsonBody
-        }
-
-        Send-DataToLogAnalytics -WorkspaceId $workspaceId -SharedKey $sharedKey -LogType $logType -JsonBody $jsonBody
+      - name: Run Microsoft Security DevOps
+        uses: microsoft/security-devops-action@latest
+        id: msdo
