@@ -19,11 +19,13 @@ jobs:
       - name: Run Microsoft Security DevOps
         uses: microsoft/security-devops-action@v1
         id: msdo
+        with:
+          run: msdo run --output-format sarif --output sarif-results.sarif
 
       - name: Upload SARIF results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+          sarif_file: sarif-results.sarif
 
       - name: Send SARIF to Azure Monitor
         env:
