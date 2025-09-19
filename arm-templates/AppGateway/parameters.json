@@ -1,0 +1,76 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "value": "centralindia"
+        },
+        "applicationGatewayName": {
+            "value": "AG-WAF"
+        },
+        "tier": {
+            "value": "Standard_v2"
+        },
+        "skuSize": {
+            "value": "Standard_v2"
+        },
+        "capacity": {
+            "value": 0
+        },
+        "subnetName": {
+            "value": "subnet-agw"
+        },
+        "zones": {
+            "value": [
+                "1",
+                "2",
+                "3"
+            ]
+        },
+        "publicIpZones": {
+            "value": [
+                "1",
+                "2",
+                "3"
+            ]
+        },
+        "publicIpAddressName": {
+            "value": [
+                "AG-WAF-PIP",
+                "AG-WAF-PIP"
+            ]
+        },
+        "sku": {
+            "value": [
+                "Standard",
+                "Standard"
+            ]
+        },
+        "allocationMethod": {
+            "value": [
+                "Static",
+                "Static"
+            ]
+        },
+        "ipAddressVersion": {
+            "value": [
+                "IPv4",
+                "IPv4"
+            ]
+        },
+        "privateIpAddress": {
+            "value": [
+                "10.43.20.132"
+            ]
+        },
+        "giscert_data": {
+            "value": null
+        },
+        "giscert_password": {
+            "value": null
+        },
+        "autoScaleMaxCapacity": {
+            "value": 10
+        }
+    }
+}
