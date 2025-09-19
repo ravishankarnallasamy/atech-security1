@@ -1,10 +1,13 @@
-name: Security DevOps Scan
+name: Microsoft Security DevOps Scan
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+
+permissions:
+  security-events: write
 
 jobs:
   security-scan:
@@ -13,20 +16,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Download Microsoft Security DevOps CLI
-        run: |
-          curl -L https://github.com/microsoft/security-devops-cli/releases/latest/download/msdo-linux-x64 -o msdo
-          chmod +x msdo
-          sudo mv msdo /usr/local/bin/msdo
-
-      - name: Run Security DevOps Scan
-        run: |
-          msdo run --output-format sarif --output sarif-results.sarif
-
-      - name: List files for debug
-        run: ls -la
+      - name: Run Microsoft Security DevOps
+        uses: microsoft/security-devops-action@v1
+        id: msdo
 
       - name: Upload SARIF results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: sarif-results.sarif
+          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+
+      - name: Send SARIF to Azure Monitor
+        env:
+          WORKSPACE_ID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}
+          WORKSPACE_KEY: ${{ secrets.LOG_ANALYTICS_PRIMARY_KEY }}
+        run: |
+          TIMESTAMP=$(date -u +"%a, %d %b %Y %H:%M:%S GMT")
+          CONTENT_TYPE="application/json"
+          LOG_TYPE="SecurityScan"
+          FILE="sarif-results.sarif"
+          FILE_SIZE=$(wc -c < $FILE)
+          STRING_TO_SIGN="POST\n$FILE_SIZE\n$CONTENT_TYPE\nx-ms-date:$TIMESTAMP\n/api/logs"
+          SIGNATURE=$(echo -n "$STRING_TO_SIGN" | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
+          curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com/api/logs?api-version=2016-04-01" \
+            -H "Content-Type: $CONTENT_TYPE" \
+            -H "Log-Type: $LOG_TYPE" \
+            -H "x-ms-date: $TIMESTAMP" \
+            -H "Authorization: SharedKey $WORKSPACE_ID:$SIGNATURE" \
+            --data-binary @$FILE
