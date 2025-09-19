@@ -1,20 +1,47 @@
-- name: Send SARIF to Azure Monitor
-  env:
-    WORKSPACE_ID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}
-    WORKSPACE_KEY: ${{ secrets.LOG_ANALYTICS_PRIMARY_KEY }}
-  run: |
-    FILE="${{ steps.msdo.outputs.sarifFile }}"
-    TIMESTAMP=$(date -u +"%a, %d %b %Y %H:%M:%S GMT")
-    CONTENT_TYPE="application/json"
-    LOG_TYPE="SecurityScan"
-    FILE_SIZE=$(wc -c < "$FILE")
-    STRING_TO_SIGN="POST\n$FILE_SIZE\n$CONTENT_TYPE\nx-ms-date:$TIMESTAMP\n/api/logs"
-    ENCODED_STRING=$(echo -n "$STRING_TO_SIGN" | iconv -f utf-8 -t utf-8 | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
-    AUTH_HEADER="SharedKey $WORKSPACE_ID:$ENCODED_STRING"
+name: Microsoft Security DevOps Scan
 
-    curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com/api/logs?api-version=2016-04-01" \
-      -H "Content-Type: $CONTENT_TYPE" \
-      -H "Log-Type: $LOG_TYPE" \
-      -H "x-ms-date: $TIMESTAMP" \
-      -H "Authorization: $AUTH_HEADER" \
-      --data-binary @"$FILE"
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  security-events: write
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run Microsoft Security DevOps
+        uses: microsoft/security-devops-action@v1
+        id: msdo
+
+      - name: Upload SARIF results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+
+      - name: Send SARIF to Azure Monitor
+        env:
+          WORKSPACE_ID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}
+          WORKSPACE_KEY: ${{ secrets.LOG_ANALYTICS_PRIMARY_KEY }}
+        run: |
+          FILE="${{ steps.msdo.outputs.sarifFile }}"
+          TIMESTAMP=$(date -u +"%a, %d %b %Y %H:%M:%S GMT")
+          CONTENT_TYPE="application/json"
+          LOG_TYPE="SecurityScan"
+          FILE_SIZE=$(wc -c < "$FILE")
+          STRING_TO_SIGN="POST\n$FILE_SIZE\n$CONTENT_TYPE\nx-ms-date:$TIMESTAMP\n/api/logs"
+          ENCODED_STRING=$(echo -n "$STRING_TO_SIGN" | iconv -f utf-8 -t utf-8 | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
+          AUTH_HEADER="SharedKey $WORKSPACE_ID:$ENCODED_STRING"
+
+          curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com/api/logs?api-version=2016-04-01" \
+            -H "Content-Type: $CONTENT_TYPE" \
+            -H "Log-Type: $LOG_TYPE" \
+            -H "x-ms-date: $TIMESTAMP" \
+            -H "Authorization: $AUTH_HEADER" \
+            --data-binary @"$FILE"
