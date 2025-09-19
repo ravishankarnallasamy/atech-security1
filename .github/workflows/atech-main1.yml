@@ -37,10 +37,11 @@ jobs:
           API_VERSION="2016-04-01"
           TIMESTAMP=$(date -u +"%a, %d %b %Y %H:%M:%S GMT")
           FILE_SIZE=$(wc -c < "$FILE")
+
           STRING_TO_SIGN="POST\n$FILE_SIZE\n$CONTENT_TYPE\nx-ms-date:$TIMESTAMP\n$RESOURCE"
 
           # Generate HMAC-SHA256 signature using the key as-is
-          SIGNATURE=$(echo -n "$STRING_TO_SIGN" | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
+          SIGNATURE=$(printf "$STRING_TO_SIGN" | iconv -t utf-8 | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
           AUTH_HEADER="SharedKey $WORKSPACE_ID:$SIGNATURE"
 
           # Send SARIF to Azure Monitor
