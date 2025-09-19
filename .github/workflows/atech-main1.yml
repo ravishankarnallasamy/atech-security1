@@ -39,11 +39,12 @@ jobs:
           FILE_SIZE=$(wc -c < "$FILE")
           STRING_TO_SIGN="POST\n$FILE_SIZE\n$CONTENT_TYPE\nx-ms-date:$TIMESTAMP\n$RESOURCE"
 
-          # Generate HMAC signature
-          SIGNATURE=$(echo -n "$STRING_TO_SIGN" | iconv -f utf-8 -t utf-8 | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
+          # Encode the signature using HMAC-SHA256
+          DECODED_KEY=$(echo "$WORKSPACE_KEY" | base64 -d)
+          SIGNATURE=$(echo -n "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt key:$DECODED_KEY -binary | base64)
           AUTH_HEADER="SharedKey $WORKSPACE_ID:$SIGNATURE"
 
-          # Send SARIF to Azure Monitor
+          # Send the SARIF file to Azure Monitor
           curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com$RESOURCE?api-version=$API_VERSION" \
             -H "Content-Type: $CONTENT_TYPE" \
             -H "Log-Type: $LOG_TYPE" \
