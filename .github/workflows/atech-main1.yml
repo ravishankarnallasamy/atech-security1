@@ -31,15 +31,20 @@ jobs:
           WORKSPACE_KEY: ${{ secrets.LOG_ANALYTICS_PRIMARY_KEY }}
         run: |
           FILE="${{ steps.msdo.outputs.sarifFile }}"
-          TIMESTAMP=$(date -u +"%a, %d %b %Y %H:%M:%S GMT")
           CONTENT_TYPE="application/json"
           LOG_TYPE="SecurityScan"
+          RESOURCE="/api/logs"
+          API_VERSION="2016-04-01"
+          TIMESTAMP=$(date -u +"%a, %d %b %Y %H:%M:%S GMT")
           FILE_SIZE=$(wc -c < "$FILE")
-          STRING_TO_SIGN="POST\n$FILE_SIZE\n$CONTENT_TYPE\nx-ms-date:$TIMESTAMP\n/api/logs"
-          ENCODED_STRING=$(echo -n "$STRING_TO_SIGN" | iconv -f utf-8 -t utf-8 | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
-          AUTH_HEADER="SharedKey $WORKSPACE_ID:$ENCODED_STRING"
+          STRING_TO_SIGN="POST\n$FILE_SIZE\n$CONTENT_TYPE\nx-ms-date:$TIMESTAMP\n$RESOURCE"
 
-          curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com/api/logs?api-version=2016-04-01" \
+          # Generate HMAC signature
+          SIGNATURE=$(echo -n "$STRING_TO_SIGN" | iconv -f utf-8 -t utf-8 | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
+          AUTH_HEADER="SharedKey $WORKSPACE_ID:$SIGNATURE"
+
+          # Send SARIF to Azure Monitor
+          curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com$RESOURCE?api-version=$API_VERSION" \
             -H "Content-Type: $CONTENT_TYPE" \
             -H "Log-Type: $LOG_TYPE" \
             -H "x-ms-date: $TIMESTAMP" \
