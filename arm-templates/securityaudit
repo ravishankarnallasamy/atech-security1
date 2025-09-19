@@ -1,0 +1,22 @@
+name: Scan ARM Templates with Microsoft Security DevOps
+
+on:
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Run Microsoft Security DevOps on ARM templates
+        uses: microsoft/security-devops-action@v1
+        with:
+          categories: 'IaC'
+          tools: 'templateanalyzer'
+          path: 'arm-templates'
