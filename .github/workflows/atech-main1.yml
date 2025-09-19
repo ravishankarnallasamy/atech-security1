@@ -1,4 +1,4 @@
-name: Microsoft Security DevOps Scan
+name: Security Scan with MSDO
 
 on:
   push:
@@ -6,55 +6,64 @@ on:
   pull_request:
     branches: [ main ]
 
-permissions:
-  security-events: write
-
 jobs:
-  security-scan:
-    runs-on: ubuntu-latest
+  msdo-scan:
+    runs-on: windows-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Run Microsoft Security DevOps
-        uses: microsoft/security-devops-action@v1
-        id: msdo
+    - name: Run Microsoft Security DevOps
+      uses: microsoft/security-devops-action@v1.0.0
+      with:
+        categories: 'code'
 
-      - name: Upload SARIF results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+    - name: Parse SARIF and send to Azure Monitor
+      shell: pwsh
+      run: |
+        $workspaceId = "${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}"
+        $sharedKey = "${{ secrets.LOG_ANALYTICS_SHARED_KEY }}"
+        $logType = "SecurityScan"
+        $sarifFilePath = "msdo.sarif"
 
-      - name: Send SARIF to Azure Monitor
-        env:
-          WORKSPACE_ID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}
-          WORKSPACE_KEY: ${{ secrets.LOG_ANALYTICS_PRIMARY_KEY }}
-        run: |
-          FILE="${{ steps.msdo.outputs.sarifFile }}"
-          CONTENT_TYPE="application/json"
-          LOG_TYPE="SecurityScan"
-          RESOURCE="/api/logs"
-          API_VERSION="2016-04-01"
-          TIMESTAMP=$(date -u +"%a, %d %b %Y %H:%M:%S GMT")
-          FILE_SIZE=$(wc -c < "$FILE")
+        $sarifContent = Get-Content $sarifFilePath -Raw | ConvertFrom-Json
+        $records = @()
 
-          # Correctly format StringToSign with actual line breaks
-          STRING_TO_SIGN=$(printf "POST\n%s\n%s\nx-ms-date:%s\n%s" "$FILE_SIZE" "$CONTENT_TYPE" "$TIMESTAMP" "$RESOURCE")
+        foreach ($run in $sarifContent.runs) {
+            foreach ($result in $run.results) {
+                $record = @{
+                    RuleId = $result.ruleId
+                    Message = $result.message.text
+                    Level = $result.level
+                    FilePath = $result.locations[0].physicalLocation.artifactLocation.uri
+                }
+                $records += $record
+            }
+        }
 
-          echo "==== DEBUG INFO ===="
-          echo "Timestamp: $TIMESTAMP"
-          echo "File size: $FILE_SIZE"
-          echo "StringToSign:"
-          echo "$STRING_TO_SIGN"
-          echo "===================="
+        $jsonBody = $records | ConvertTo-Json -Depth 5
 
-          SIGNATURE=$(printf "$STRING_TO_SIGN" | iconv -t utf-8 | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
-          AUTH_HEADER="SharedKey $WORKSPACE_ID:$SIGNATURE"
+        # Function to send data to Log Analytics
+        function Send-DataToLogAnalytics {
+            param (
+                [string]$WorkspaceId,
+                [string]$SharedKey,
+                [string]$LogType,
+                [string]$JsonBody
+            )
 
-          # Use --header explicitly to avoid charset injection
-          curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com$RESOURCE?api-version=$API_VERSION" \
-            --header "Content-Type: application/json" \
-            --header "Log-Type: $LOG_TYPE" \
-            --header "x-ms-date: $TIMESTAMP" \
-            --header "Authorization: $AUTH_HEADER" \
-            --data-binary @"$FILE"
+            $TimeStamp = Get-Date -Format "r"
+            $Signature = Build-Signature -WorkspaceId $WorkspaceId -SharedKey $SharedKey -Date $TimeStamp -ContentLength $JsonBody.Length -Method "POST" -ContentType "application/json" -Resource "/api/logs"
+            $Uri = "https://$WorkspaceId.ods.opinsights.azure.com/api/logs?api-version=2016-04-01"
+
+            Invoke-RestMethod -Method Post -Uri $Uri -Headers @{
+                "Authorization" = $Signature
+                "Log-Type" = $LogType
+                "x-ms-date" = $TimeStamp
+                "Content-Type" = "application/json"
+            } -Body $JsonBody
+        }
+
+        # Signature builder function (you may need to define this separately)
+        # Call Send-DataToLogAnalytics here
