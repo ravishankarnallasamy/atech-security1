@@ -13,12 +13,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Run Microsoft Security DevOps Scan
-        uses: microsoft/security-devops-action@preview
-        with:
-          run: msdo run --output-format sarif --output sarif-results.sarif
+      - name: Install Microsoft Security DevOps CLI
+        run: |
+          curl -L https://github.com/microsoft/security-devops-cli/releases/latest/download/msdo-linux-x64 -o msdo
+          chmod +x msdo
+          sudo mv msdo /usr/local/bin/msdo
+
+      - name: Run Security DevOps Scan
+        run: |
+          msdo run --output-format sarif --output sarif-results.sarif
 
       - name: Upload SARIF results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: sarif-results.sarif
