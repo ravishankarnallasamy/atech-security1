@@ -1,4 +1,4 @@
-name: Security Scan with MSDO
+name: Security Scan with MSDO and Azure Monitor Integration
 
 on:
   push:
@@ -15,9 +15,14 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Run Microsoft Security DevOps
-      uses: microsoft/security-devops-action@v1.0.0
+      uses: microsoft/security-devops-action@v1.12.0
       with:
         categories: 'code'
+
+    - name: Upload SARIF to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: msdo.sarif
 
     - name: Parse SARIF and send to Azure Monitor
       shell: pwsh
@@ -44,7 +49,27 @@ jobs:
 
         $jsonBody = $records | ConvertTo-Json -Depth 5
 
-        # Function to send data to Log Analytics
+        function Build-Signature {
+            param (
+                [string]$WorkspaceId,
+                [string]$SharedKey,
+                [string]$Date,
+                [int]$ContentLength,
+                [string]$Method,
+                [string]$ContentType,
+                [string]$Resource
+            )
+
+            $stringToHash = "$Method`n$ContentLength`n$ContentType`n$Date`n$Resource"
+            $bytesToHash = [Text.Encoding]::UTF8.GetBytes($stringToHash)
+            $keyBytes = [Convert]::FromBase64String($SharedKey)
+            $sha256 = New-Object System.Security.Cryptography.HMACSHA256
+            $sha256.Key = $keyBytes
+            $hashedBytes = $sha256.ComputeHash($bytesToHash)
+            $encodedHash = [Convert]::ToBase64String($hashedBytes)
+            return "SharedKey $WorkspaceId:$encodedHash"
+        }
+
         function Send-DataToLogAnalytics {
             param (
                 [string]$WorkspaceId,
@@ -65,5 +90,4 @@ jobs:
             } -Body $JsonBody
         }
 
-        # Signature builder function (you may need to define this separately)
-        # Call Send-DataToLogAnalytics here
+        Send-DataToLogAnalytics -WorkspaceId $workspaceId -SharedKey $sharedKey -LogType $logType -JsonBody $jsonBody
