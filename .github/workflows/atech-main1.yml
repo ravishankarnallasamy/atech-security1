@@ -39,9 +39,8 @@ jobs:
           FILE_SIZE=$(wc -c < "$FILE")
           STRING_TO_SIGN="POST\n$FILE_SIZE\n$CONTENT_TYPE\nx-ms-date:$TIMESTAMP\n$RESOURCE"
 
-          # Encode the signature using HMAC-SHA256
-          DECODED_KEY=$(echo "$WORKSPACE_KEY" | base64 -d)
-          SIGNATURE=$(echo -n "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt key:$DECODED_KEY -binary | base64)
+          # Generate HMAC signature using the key as-is (no base64 decoding)
+          SIGNATURE=$(echo -n "$STRING_TO_SIGN" | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
           AUTH_HEADER="SharedKey $WORKSPACE_ID:$SIGNATURE"
 
           # Send the SARIF file to Azure Monitor
