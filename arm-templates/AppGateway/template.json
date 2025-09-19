@@ -1,0 +1,259 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "type": "String"
+        },
+        "applicationGatewayName": {
+            "type": "String"
+        },
+        "tier": {
+            "type": "String"
+        },
+        "skuSize": {
+            "type": "String"
+        },
+        "capacity": {
+            "defaultValue": 2,
+            "type": "Int"
+        },
+        "subnetName": {
+            "type": "String"
+        },
+        "zones": {
+            "type": "Array"
+        },
+        "publicIpZones": {
+            "type": "Array"
+        },
+        "publicIpAddressName": {
+            "type": "Array"
+        },
+        "sku": {
+            "type": "Array"
+        },
+        "allocationMethod": {
+            "type": "Array"
+        },
+        "ipAddressVersion": {
+            "type": "Array"
+        },
+        "privateIpAddress": {
+            "type": "Array"
+        },
+        "giscert_data": {
+            "type": "SecureString"
+        },
+        "giscert_password": {
+            "type": "SecureString"
+        },
+        "autoScaleMaxCapacity": {
+            "type": "Int"
+        }
+    },
+    "variables": {
+        "vnetId": "/subscriptions/8d704685-c402-4677-9e96-18dd3ec83ddc/resourceGroups/RG_VNET/providers/Microsoft.Network/virtualNetworks/vnet-hub-01",
+        "publicIPRef": [
+            "[resourceId('Microsoft.Network/publicIPAddresses/', parameters('publicIpAddressName')[0])]"
+        ],
+        "subnetRef": "[concat(variables('vnetId'), '/subnets/', parameters('subnetName'))]",
+        "applicationGatewayId": "[resourceId('Microsoft.Network/applicationGateways', parameters('applicationGatewayName'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/applicationGateways",
+            "apiVersion": "2024-10-01",
+            "name": "[parameters('applicationGatewayName')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/publicIPAddresses/', parameters('publicIpAddressName')[0])]"
+            ],
+            "tags": {
+                "application": "gis"
+            },
+            "zones": "[parameters('zones')]",
+            "properties": {
+                "sku": {
+                    "name": "[parameters('skuSize')]",
+                    "tier": "[parameters('tier')]"
+                },
+                "gatewayIPConfigurations": [
+                    {
+                        "name": "appGatewayIpConfig",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            }
+                        }
+                    }
+                ],
+                "frontendIPConfigurations": [
+                    {
+                        "name": "appGwPublicFrontendIpIPv4",
+                        "properties": {
+                            "PublicIPAddress": {
+                                "id": "[variables('publicIPRef')[0]]"
+                            }
+                        }
+                    },
+                    {
+                        "name": "appGwPrivateFrontendIpIPv4",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "privateIPAddress": "[parameters('privateIpAddress')[0]]",
+                            "privateIPAllocationMethod": "Static"
+                        }
+                    }
+                ],
+                "frontendPorts": [
+                    {
+                        "name": "port_80",
+                        "properties": {
+                            "Port": 80
+                        }
+                    },
+                    {
+                        "name": "port_443",
+                        "properties": {
+                            "Port": 443
+                        }
+                    }
+                ],
+                "backendAddressPools": [
+                    {
+                        "name": "gisbkp",
+                        "properties": {
+                            "backendAddresses": []
+                        }
+                    }
+                ],
+                "backendHttpSettingsCollection": [
+                    {
+                        "name": "http",
+                        "properties": {
+                            "Port": 80,
+                            "Protocol": "Http",
+                            "cookieBasedAffinity": "Disabled",
+                            "requestTimeout": 20,
+                            "dedicatedBackendConnection": false
+                        }
+                    },
+                    {
+                        "name": "https",
+                        "properties": {
+                            "Port": 443,
+                            "Protocol": "Https",
+                            "cookieBasedAffinity": "Disabled",
+                            "requestTimeout": 20,
+                            "dedicatedBackendConnection": false,
+                            "validateCertChainAndExpiry": true,
+                            "validateSNI": true,
+                            "sniName": null
+                        }
+                    }
+                ],
+                "backendSettingsCollection": [],
+                "httpListeners": [
+                    {
+                        "name": "gisapp",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(variables('applicationGatewayId'), '/frontendIPConfigurations/appGwPublicFrontendIpIPv4')]"
+                            },
+                            "frontendPort": {
+                                "id": "[concat(variables('applicationGatewayId'), '/frontendPorts/port_80')]"
+                            },
+                            "protocol": "Http",
+                            "sslCertificate": null,
+                            "customErrorConfigurations": []
+                        }
+                    },
+                    {
+                        "name": "https",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(variables('applicationGatewayId'), '/frontendIPConfigurations/appGwPublicFrontendIpIPv4')]"
+                            },
+                            "frontendPort": {
+                                "id": "[concat(variables('applicationGatewayId'), '/frontendPorts/port_443')]"
+                            },
+                            "protocol": "Https",
+                            "sslCertificate": {
+                                "id": "[concat(variables('applicationGatewayId'), '/sslCertificates/giscert')]"
+                            },
+                            "customErrorConfigurations": []
+                        }
+                    }
+                ],
+                "listeners": [],
+                "requestRoutingRules": [
+                    {
+                        "Name": "rule1",
+                        "properties": {
+                            "RuleType": "Basic",
+                            "httpListener": {
+                                "id": "[concat(variables('applicationGatewayId'), '/httpListeners/gisapp')]"
+                            },
+                            "priority": 100,
+                            "backendAddressPool": {
+                                "id": "[concat(variables('applicationGatewayId'), '/backendAddressPools/gisbkp')]"
+                            },
+                            "backendHttpSettings": {
+                                "id": "[concat(variables('applicationGatewayId'), '/backendHttpSettingsCollection/http')]"
+                            }
+                        }
+                    },
+                    {
+                        "Name": "gisrthttps",
+                        "properties": {
+                            "RuleType": "Basic",
+                            "httpListener": {
+                                "id": "[concat(variables('applicationGatewayId'), '/httpListeners/https')]"
+                            },
+                            "priority": 101,
+                            "backendAddressPool": {
+                                "id": "[concat(variables('applicationGatewayId'), '/backendAddressPools/gisbkp')]"
+                            },
+                            "backendHttpSettings": {
+                                "id": "[concat(variables('applicationGatewayId'), '/backendHttpSettingsCollection/https')]"
+                            }
+                        }
+                    }
+                ],
+                "routingRules": [],
+                "enableHttp2": true,
+                "sslCertificates": [
+                    {
+                        "name": "giscert",
+                        "properties": {
+                            "data": "[parameters('giscert_data')]",
+                            "password": "[parameters('giscert_password')]"
+                        }
+                    }
+                ],
+                "probes": [],
+                "autoscaleConfiguration": {
+                    "minCapacity": "[parameters('capacity')]",
+                    "maxCapacity": "[parameters('autoScaleMaxCapacity')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-08-01",
+            "name": "[parameters('publicIpAddressName')[0]]",
+            "location": "[parameters('location')]",
+            "sku": {
+                "name": "[parameters('sku')[0]]"
+            },
+            "zones": "[parameters('publicIpZones')]",
+            "properties": {
+                "publicIPAddressVersion": "[parameters('ipAddressVersion')[0]]",
+                "publicIPAllocationMethod": "[parameters('allocationMethod')[0]]"
+            }
+        }
+    ]
+}
