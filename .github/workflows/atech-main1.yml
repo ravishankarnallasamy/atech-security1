@@ -51,9 +51,10 @@ jobs:
           SIGNATURE=$(printf "$STRING_TO_SIGN" | iconv -t utf-8 | openssl dgst -sha256 -hmac "$WORKSPACE_KEY" -binary | base64)
           AUTH_HEADER="SharedKey $WORKSPACE_ID:$SIGNATURE"
 
+          # Use --header explicitly to avoid charset injection
           curl -X POST "https://$WORKSPACE_ID.ods.opinsights.azure.com$RESOURCE?api-version=$API_VERSION" \
-            -H "Content-Type: application/json" \
-            -H "Log-Type: $LOG_TYPE" \
-            -H "x-ms-date: $TIMESTAMP" \
-            -H "Authorization: $AUTH_HEADER" \
+            --header "Content-Type: application/json" \
+            --header "Log-Type: $LOG_TYPE" \
+            --header "x-ms-date: $TIMESTAMP" \
+            --header "Authorization: $AUTH_HEADER" \
             --data-binary @"$FILE"
